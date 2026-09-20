@@ -1,1 +1,361 @@
+<!DOCTYPE html>
+<html lang="ca">
 
+<head>
+
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>Escàner d'objectes</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
+  <style>
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #111;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 24px;
+      margin: 15px;
+    }
+
+    #cameraContainer {
+      position: relative;
+      width: 100%;
+      max-width: 700px;
+      margin: auto;
+      overflow: hidden;
+      border-radius: 15px;
+    }
+
+    #video {
+      width: 100%;
+      display: block;
+    }
+
+    #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    button {
+      margin: 15px 5px;
+      padding: 13px 22px;
+      border: none;
+      border-radius: 10px;
+      font-size: 17px;
+      cursor: pointer;
+    }
+
+    #iniciar {
+      background: #238636;
+      color: white;
+    }
+
+    #aturar {
+      background: #da3633;
+      color: white;
+    }
+
+    #estat {
+      padding: 10px;
+      font-size: 17px;
+    }
+
+  </style>
+
+</head>
+
+<body>
+
+<h1>🤖 Escàner d'objectes</h1>
+
+<div id="estat">
+  Carregant intel·ligència artificial...
+</div>
+
+<div id="cameraContainer">
+
+  <video
+    id="video"
+    autoplay
+    muted
+    playsinline>
+  </video>
+
+  <canvas id="canvas"></canvas>
+
+</div>
+
+<button id="iniciar" onclick="iniciarCamera()">
+  📷 Iniciar càmera
+</button>
+
+<button id="aturar" onclick="aturarCamera()">
+  ⛔ Aturar
+</button>
+
+<script>
+
+let video = document.getElementById("video");
+let canvas = document.getElementById("canvas");
+let ctx = canvas.getContext("2d");
+
+let model = null;
+let stream = null;
+let escanejant = false;
+
+
+// -----------------------------
+// CARREGAR IA
+// -----------------------------
+
+async function carregarIA() {
+
+  document.getElementById("estat").innerText =
+    "🧠 Carregant model d'IA...";
+
+  model = await cocoSsd.load();
+
+  document.getElementById("estat").innerText =
+    "✅ IA preparada.";
+
+}
+
+
+// -----------------------------
+// OBRIR CÀMERA
+// -----------------------------
+
+async function iniciarCamera() {
+
+  try {
+
+    document.getElementById("estat").innerText =
+      "📷 Obrint càmera...";
+
+    stream = await navigator.mediaDevices.getUserMedia({
+
+      video: {
+        facingMode: {
+          ideal: "environment"
+        },
+
+        width: {
+          ideal: 1280
+        },
+
+        height: {
+          ideal: 720
+        }
+      },
+
+      audio: false
+
+    });
+
+    video.srcObject = stream;
+
+    await video.play();
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    escanejant = true;
+
+    document.getElementById("estat").innerText =
+      "🔎 Buscant objectes...";
+
+    detectarObjectes();
+
+  }
+
+  catch(error) {
+
+    console.error(error);
+
+    document.getElementById("estat").innerText =
+      "❌ No s'ha pogut accedir a la càmera.";
+
+    alert(
+      "No s'ha pogut obrir la càmera.\n\n" +
+      "Comprova que has acceptat el permís de càmera."
+    );
+
+  }
+
+}
+
+
+// -----------------------------
+// DETECTAR OBJECTES
+// -----------------------------
+
+async function detectarObjectes() {
+
+  if (!escanejant) {
+    return;
+  }
+
+  if (!model) {
+    return;
+  }
+
+  const deteccions =
+    await model.detect(video);
+
+
+  ctx.clearRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+
+  let objectes = [];
+
+
+  deteccions.forEach(function(obj) {
+
+    const x = obj.bbox[0];
+    const y = obj.bbox[1];
+
+    const amplada = obj.bbox[2];
+    const altura = obj.bbox[3];
+
+    const confiança =
+      Math.round(obj.score * 100);
+
+
+    objectes.push(
+      obj.class + " " + confiança + "%"
+    );
+
+
+    // Rectangle
+    ctx.strokeStyle = "#00ff00";
+    ctx.lineWidth = 4;
+
+    ctx.strokeRect(
+      x,
+      y,
+      amplada,
+      altura
+    );
+
+
+    // Fons del text
+    ctx.fillStyle = "#00ff00";
+
+    ctx.fillRect(
+      x,
+      Math.max(0, y - 30),
+      180,
+      30
+    );
+
+
+    // Text
+    ctx.fillStyle = "#000";
+
+    ctx.font = "18px Arial";
+
+    ctx.fillText(
+      obj.class + " " + confiança + "%",
+      x + 5,
+      Math.max(20, y - 8)
+    );
+
+  });
+
+
+  if (objectes.length > 0) {
+
+    document.getElementById("estat").innerText =
+      "🔎 " + objectes.join(" | ");
+
+  }
+  else {
+
+    document.getElementById("estat").innerText =
+      "🔎 No s'han detectat objectes.";
+
+  }
+
+
+  requestAnimationFrame(
+    detectarObjectes
+  );
+
+}
+
+
+// -----------------------------
+// ATURAR CÀMERA
+// -----------------------------
+
+function aturarCamera() {
+
+  escanejant = false;
+
+
+  if (stream) {
+
+    stream.getTracks().forEach(
+      function(track) {
+        track.stop();
+      }
+    );
+
+    stream = null;
+
+  }
+
+
+  video.srcObject = null;
+
+
+  ctx.clearRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+
+  document.getElementById("estat").innerText =
+    "⏸️ Escàner aturat.";
+
+}
+
+
+// -----------------------------
+// INICIAR IA
+// -----------------------------
+
+carregarIA();
+
+</script>
+
+</body>
+</html>
